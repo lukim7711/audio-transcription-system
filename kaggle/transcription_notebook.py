@@ -286,7 +286,16 @@ try:
             }
         )
         # Construct public URL
-        uploaded_urls[s3_key] = f"{R2_ENDPOINT.replace('https://', 'https://pub-')}/{R2_BUCKET}/{s3_key}"
+        # UPDATE: Menggunakan R2_PUBLIC_URL dari environment variable yang valid
+        public_domain = os.environ.get('R2_PUBLIC_URL')
+        if public_domain:
+            # Hapus slash di akhir jika ada, untuk konsistensi
+            public_domain = public_domain.rstrip('/')
+            uploaded_urls[s3_key] = f"{public_domain}/{s3_key}"
+        else:
+            # Fallback jika lupa setting variable (meski akan error di frontend)
+            print("⚠️ WARNING: R2_PUBLIC_URL not set!")
+            uploaded_urls[s3_key] = f"{R2_ENDPOINT}/{R2_BUCKET}/{s3_key}"
         print(f"✅ Uploaded to: {s3_key}")
     
     print(f"✅ All files uploaded successfully")

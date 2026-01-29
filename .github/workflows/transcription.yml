@@ -23,68 +23,59 @@ jobs:
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          # Mengambil data dari payload webhook frontend
+          # Data Dinamis (Aman untuk di-inject karena bukan rahasia server)
           JOB_ID: ${{ github.event.client_payload.job_id }}
           VIDEO_URL: ${{ github.event.client_payload.video_url }}
           MODEL_SIZE: ${{ github.event.client_payload.model_size }}
           LANGUAGE: ${{ github.event.client_payload.language }}
           WEBHOOK_URL: ${{ github.event.client_payload.webhook_url }}
-          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
-          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          R2_ACCESS_KEY: ${{ secrets.R2_ACCESS_KEY }}
-          R2_SECRET_KEY: ${{ secrets.R2_SECRET_KEY }}
+          # R2 Public URL & Bucket (Bukan rahasia server)
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
         run: |
           mkdir -p transcription_build
           
-          # GUNAKAN PYTHON UNTUK INJEKSI VARIABEL & BUAT METADATA
-          # Ini lebih aman untuk menangani karakter spesial pada secret
           python3 -c '
           import os
           import json
           
-          # 1. Baca script asli
+          # 1. Baca script asli (Code Logic)
           with open("kaggle/transcription_notebook.py", "r") as f:
               original_code = f.read()
               
-          # 2. Ambil variabel dari GitHub Env
+          # 2. INJEKSI VARIABLE DINAMIS (Job ID, Video URL)
+          # Kita TIDAK meng-inject Secrets (Key/Pass) di sini.
+          # Secrets akan diambil script via UserSecretsClient dari settingan Kaggle yang sudah dicentang.
           env_vars = {
               "JOB_ID": os.environ.get("JOB_ID"),
               "VIDEO_URL": os.environ.get("VIDEO_URL"),
               "MODEL_SIZE": os.environ.get("MODEL_SIZE"),
               "LANGUAGE": os.environ.get("LANGUAGE"),
               "WEBHOOK_URL": os.environ.get("WEBHOOK_URL"),
-              "WEBHOOK_SECRET": os.environ.get("WEBHOOK_SECRET"),
-              "R2_ENDPOINT": os.environ.get("R2_ENDPOINT"),
-              "R2_ACCESS_KEY": os.environ.get("R2_ACCESS_KEY"),
-              "R2_SECRET_KEY": os.environ.get("R2_SECRET_KEY"),
               "R2_BUCKET": os.environ.get("R2_BUCKET"),
               "R2_PUBLIC_URL": os.environ.get("R2_PUBLIC_URL"),
           }
           
-          # 3. Buat blok kode injeksi (hardcode env vars ke dalam script)
-          # Menggunakan repr() memastikan string dikutip dan di-escape dengan benar
           injection_code = "import os\n"
           for key, value in env_vars.items():
               if value:
                   injection_code += f"os.environ[\"{key}\"] = {repr(value)}\n"
           
-          # Gabungkan: Injeksi di atas, kode asli di bawah
+          # Gabungkan
           final_code = injection_code + "\n" + original_code
           
-          # Tulis script final ke folder build
           with open("transcription_build/notebook.py", "w") as f:
               f.write(final_code)
               
-          # 4. Generate Metadata Kernel
+          # 3. METADATA (PERSISTENT WORKER)
           username = os.environ.get("KAGGLE_USERNAME")
-          job_id = env_vars["JOB_ID"] or "test-job"
-          short_id = job_id[:8]
-          slug = f"audio-transcription-{short_id}"
-          title = f"Transcription Job {short_id}"
           
-          print(f"⚙️ Generating metadata for: {username}/{slug}")
+          # FIXED SLUG: Ini KUNCI-nya. 
+          # Kita menimpa kernel yang SAMA berulang kali agar settingan Secrets tidak hilang.
+          slug = "audio-transcription-worker"
+          title = "Audio Transcription Worker"
+          
+          print(f"⚙️ Target Kernel: {username}/{slug}")
           
           metadata = {
               "id": f"{username}/{slug}",
@@ -104,8 +95,8 @@ jobs:
               json.dump(metadata, f, indent=2)
           '
           
-          # 3. Push ke Kaggle
+          # 4. Push (Update Kernel yang sudah ada)
           cd transcription_build
           kaggle kernels push
           
-          echo "✅ Push command executed successfully!"
+          echo "✅ Worker updated and triggered successfully!"
