@@ -152,7 +152,7 @@ start_time = time.time()
 
 try:
     print(f"🤖 Loading Whisper model: {MODEL_SIZE}")
-    model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="float16")
+    model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="float32")
     
     print(f"🎙️  Starting transcription...")
     language_param = None if LANGUAGE == 'auto' else LANGUAGE
