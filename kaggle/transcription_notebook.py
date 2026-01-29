@@ -10,47 +10,64 @@ import hmac
 import hashlib
 import requests
 from pathlib import Path
+from kaggle_secrets import UserSecretsClient # Import Wajib untuk Secrets
 
-# ============================================================================
-# SETUP & DEPENDENCIES
-# ============================================================================
+# Install dependencies
 print("📦 Installing dependencies...")
-# UPDATE 1: Install yt-dlp dari GitHub Master untuk bypass 403 terbaru
+# Install yt-dlp dari master untuk bypass block 403
 os.system("pip install -q faster-whisper boto3 https://github.com/yt-dlp/yt-dlp/archive/master.zip")
 
 import yt_dlp
 from faster_whisper import WhisperModel
 import boto3
 
-# ... (Kode CONFIGURATION sampai HELPER FUNCTIONS biarkan sama) ...
-# Salin ulang bagian bawah ini agar aman:
-
 # ============================================================================
-# CONFIGURATION FROM ENVIRONMENT
+# CONFIGURATION
 # ============================================================================
 
+# 1. DYNAMIC DATA (Dari GitHub Action Environment)
 JOB_ID = os.environ.get('JOB_ID')
 VIDEO_URL = os.environ.get('VIDEO_URL')
 MODEL_SIZE = os.environ.get('MODEL_SIZE', 'medium')
 LANGUAGE = os.environ.get('LANGUAGE', 'auto')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
-WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET')
-
-# R2 Configuration
-R2_ENDPOINT = os.environ.get('R2_ENDPOINT')
-R2_ACCESS_KEY = os.environ.get('R2_ACCESS_KEY')
-R2_SECRET_KEY = os.environ.get('R2_SECRET_KEY')
 R2_BUCKET = os.environ.get('R2_BUCKET', 'transcriptions')
+# Public URL untuk frontend (bukan endpoint upload)
+R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL') 
+
+# 2. SECRETS (Dari Kaggle Add-on Secrets)
+try:
+    user_secrets = UserSecretsClient()
+    WEBHOOK_SECRET = user_secrets.get_secret("WEBHOOK_SECRET")
+    R2_ACCESS_KEY = user_secrets.get_secret("R2_ACCESS_KEY")
+    R2_SECRET_KEY = user_secrets.get_secret("R2_SECRET_KEY")
+    R2_ENDPOINT = user_secrets.get_secret("R2_ENDPOINT")
+    print("🔐 Secrets loaded successfully from Kaggle Vault")
+except Exception as e:
+    print(f"⚠️ Error loading secrets: {str(e)}")
+    print("⚠️ Falling back to os.environ (Might fail if not injected)")
+    WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET')
+    R2_ACCESS_KEY = os.environ.get('R2_ACCESS_KEY')
+    R2_SECRET_KEY = os.environ.get('R2_SECRET_KEY')
+    R2_ENDPOINT = os.environ.get('R2_ENDPOINT')
 
 print(f"\n✅ Configuration loaded:")
 print(f"  Job ID: {JOB_ID}")
 print(f"  Model: {MODEL_SIZE}")
-print(f"  Language: {LANGUAGE}")
-print(f"  Video URL: {VIDEO_URL[:50]}...")
+print(f"  Video URL: {VIDEO_URL}")
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
 
 def send_webhook(payload):
     """Send webhook with HMAC signature"""
     try:
+        # Pastikan WEBHOOK_SECRET ada
+        if not WEBHOOK_SECRET:
+            print("❌ Webhook secret is missing, skipping webhook")
+            return
+
         payload_json = json.dumps(payload)
         signature = hmac.new(
             WEBHOOK_SECRET.encode(),
@@ -76,7 +93,9 @@ def send_webhook(payload):
     except Exception as e:
         print(f"❌ Failed to send webhook: {str(e)}")
 
+
 def send_webhook_error(error_code, error_message, error_details=None):
+    """Send error webhook"""
     payload = {
         'job_id': JOB_ID,
         'status': 'failed',
@@ -87,12 +106,15 @@ def send_webhook_error(error_code, error_message, error_details=None):
     }
     send_webhook(payload)
 
+
 def format_timestamp_srt(seconds):
+    """Format timestamp for SRT format"""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
     millis = int((seconds % 1) * 1000)
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
 
 # ============================================================================
 # STEP 1: DOWNLOAD AUDIO
@@ -105,7 +127,6 @@ print("="*60)
 try:
     audio_file = f'{JOB_ID}.m4a'
     
-    # UPDATE 2: Konfigurasi Anti-Bot YouTube (Android Client)
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': f'{JOB_ID}.%(ext)s',
@@ -116,7 +137,7 @@ try:
         'quiet': False,
         'no_warnings': False,
         'nocheckcertificate': True,
-        # Trik jitu bypass 403: Menyamar sebagai Android App
+        # Bypass 403 dengan menyamar sebagai Android Client
         'extractor_args': {
             'youtube': {
                 'player_client': ['android', 'web']
@@ -152,6 +173,7 @@ start_time = time.time()
 
 try:
     print(f"🤖 Loading Whisper model: {MODEL_SIZE}")
+    # Gunakan float32 agar kompatibel dengan GPU Kaggle
     model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="float32")
     
     print(f"🎙️  Starting transcription...")
@@ -258,6 +280,9 @@ print("STEP 4: UPLOADING TO R2 STORAGE")
 print("="*60)
 
 try:
+    if not R2_ENDPOINT or not R2_ACCESS_KEY or not R2_SECRET_KEY:
+        raise ValueError("Missing R2 Credentials from Secrets")
+
     # Initialize S3 client for R2
     s3 = boto3.client(
         's3',
@@ -274,6 +299,15 @@ try:
     ]
     
     uploaded_urls = {}
+    
+    # Tentukan Public Domain untuk URL frontend
+    if R2_PUBLIC_URL:
+        public_domain = R2_PUBLIC_URL.rstrip('/')
+    else:
+        # Fallback (akan error di frontend tapi setidaknya terupload)
+        public_domain = R2_ENDPOINT
+        print("⚠️ Warning: R2_PUBLIC_URL not set!")
+
     for local_file, s3_key, content_type in files_to_upload:
         print(f"⬆️  Uploading {local_file}...")
         s3.upload_file(
@@ -286,16 +320,7 @@ try:
             }
         )
         # Construct public URL
-        # UPDATE: Menggunakan R2_PUBLIC_URL dari environment variable yang valid
-        public_domain = os.environ.get('R2_PUBLIC_URL')
-        if public_domain:
-            # Hapus slash di akhir jika ada, untuk konsistensi
-            public_domain = public_domain.rstrip('/')
-            uploaded_urls[s3_key] = f"{public_domain}/{s3_key}"
-        else:
-            # Fallback jika lupa setting variable (meski akan error di frontend)
-            print("⚠️ WARNING: R2_PUBLIC_URL not set!")
-            uploaded_urls[s3_key] = f"{R2_ENDPOINT}/{R2_BUCKET}/{s3_key}"
+        uploaded_urls[s3_key] = f"{public_domain}/{s3_key}"
         print(f"✅ Uploaded to: {s3_key}")
     
     print(f"✅ All files uploaded successfully")
@@ -337,4 +362,3 @@ try:
 except Exception as e:
     error_message = f"Failed to send success webhook: {str(e)}"
     print(f"❌ {error_message}")
-    # Don't raise here, job is already done
