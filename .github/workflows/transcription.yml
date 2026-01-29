@@ -5,7 +5,6 @@
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          # Kita ambil payload dari webhook frontend
           JOB_ID: ${{ github.event.client_payload.job_id }}
           VIDEO_URL: ${{ github.event.client_payload.video_url }}
           MODEL_SIZE: ${{ github.event.client_payload.model_size }}
@@ -17,41 +16,40 @@
           R2_SECRET_KEY: ${{ secrets.R2_SECRET_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
-          # 1. Buat folder kerja
           mkdir -p transcription_build
-          
-          # 2. Copy script "Otak" ke folder kerja sebagai notebook.py
           cp kaggle/transcription_notebook.py transcription_build/notebook.py
-          
-          # 3. Masuk ke folder
           cd transcription_build
           
-          # 4. Buat metadata kernel secara dinamis (ID wajib: username/slug)
-          # Kita ambil 8 karakter pertama JOB_ID agar slug tidak kepanjangan
-          SHORT_ID=$(echo $JOB_ID | cut -c1-8)
-          KERNEL_SLUG="audio-transcription-${SHORT_ID}"
+          python3 -c '
+          import os, json
           
-          echo "Generating metadata for: ${KAGGLE_USERNAME}/${KERNEL_SLUG}"
+          job_id = os.environ.get("JOB_ID", "test-job")
+          username = os.environ.get("KAGGLE_USERNAME")
           
-          # Buat file kernel-metadata.json yang WAJIB ada untuk CLI
-          cat > kernel-metadata.json <<EOF
-          {
-            "id": "${KAGGLE_USERNAME}/${KERNEL_SLUG}",
-            "title": "Job ${SHORT_ID}",
-            "code_file": "notebook.py",
-            "language": "python",
-            "kernel_type": "script",
-            "is_private": true,
-            "enable_gpu": true,
-            "enable_internet": true,
-            "dataset_sources": [],
-            "kernel_sources": [],
-            "kernel_data_sources": []
+          short_id = job_id[:8]
+          slug = f"audio-transcription-{short_id}"
+          title = f"Transcription Job {short_id}"
+          
+          print(f"⚙️ Generating metadata for: {username}/{slug}")
+          
+          metadata = {
+              "id": f"{username}/{slug}",
+              "title": title,
+              "code_file": "notebook.py",
+              "language": "python",
+              "kernel_type": "script",
+              "is_private": True,
+              "enable_gpu": True,
+              "enable_internet": True,
+              "dataset_sources": [],
+              "kernel_sources": [],
+              "kernel_data_sources": []
           }
-          EOF
           
-          # 5. Push menggunakan Official CLI
-          # CLI akan otomatis membaca environment variables KAGGLE_USERNAME & KAGGLE_KEY
+          with open("kernel-metadata.json", "w") as f:
+              json.dump(metadata, f, indent=2)
+          '
+          
           kaggle kernels push
           
-          echo "✅ Push command executed. Check Kaggle Dashboard."
+          echo "✅ Push command executed successfully!"
