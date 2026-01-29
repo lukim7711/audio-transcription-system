@@ -1,0 +1,29 @@
+# Cloudflare Pages Configuration
+# This file configures bindings and settings for Cloudflare Pages deployment
+
+name = "audio-transcription-system"
+compatibility_date = "2024-01-01"
+
+# Pages configuration
+pages_build_output_dir = "frontend/dist"
+
+# D1 Database binding
+# Replace database_id with your actual D1 database ID from:
+# npx wrangler d1 create transcriptions-db
+[[d1_databases]]
+binding = "DB"
+database_name = "transcriptions-db"
+database_id = "YOUR_DATABASE_ID_HERE"  # <-- REPLACE THIS!
+
+# R2 Bucket binding
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "transcriptions"
+
+# Advanced settings (optional)
+[build]
+command = "cd frontend && npm install && npm run build"
+
+# Compatibility flags
+[compatibility_flags]
+# Enable modern JavaScript features
