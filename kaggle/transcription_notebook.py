@@ -11,13 +11,19 @@ import hashlib
 import requests
 from pathlib import Path
 
-# Install dependencies
+# ============================================================================
+# SETUP & DEPENDENCIES
+# ============================================================================
 print("📦 Installing dependencies...")
-os.system("pip install -q faster-whisper yt-dlp boto3")
+# UPDATE 1: Install yt-dlp dari GitHub Master untuk bypass 403 terbaru
+os.system("pip install -q faster-whisper boto3 https://github.com/yt-dlp/yt-dlp/archive/master.zip")
 
 import yt_dlp
 from faster_whisper import WhisperModel
 import boto3
+
+# ... (Kode CONFIGURATION sampai HELPER FUNCTIONS biarkan sama) ...
+# Salin ulang bagian bawah ini agar aman:
 
 # ============================================================================
 # CONFIGURATION FROM ENVIRONMENT
@@ -41,10 +47,6 @@ print(f"  Job ID: {JOB_ID}")
 print(f"  Model: {MODEL_SIZE}")
 print(f"  Language: {LANGUAGE}")
 print(f"  Video URL: {VIDEO_URL[:50]}...")
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
 
 def send_webhook(payload):
     """Send webhook with HMAC signature"""
@@ -74,9 +76,7 @@ def send_webhook(payload):
     except Exception as e:
         print(f"❌ Failed to send webhook: {str(e)}")
 
-
 def send_webhook_error(error_code, error_message, error_details=None):
-    """Send error webhook"""
     payload = {
         'job_id': JOB_ID,
         'status': 'failed',
@@ -87,15 +87,12 @@ def send_webhook_error(error_code, error_message, error_details=None):
     }
     send_webhook(payload)
 
-
 def format_timestamp_srt(seconds):
-    """Format timestamp for SRT format"""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
     millis = int((seconds % 1) * 1000)
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
-
 
 # ============================================================================
 # STEP 1: DOWNLOAD AUDIO
@@ -108,6 +105,7 @@ print("="*60)
 try:
     audio_file = f'{JOB_ID}.m4a'
     
+    # UPDATE 2: Konfigurasi Anti-Bot YouTube (Android Client)
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': f'{JOB_ID}.%(ext)s',
@@ -117,6 +115,13 @@ try:
         }],
         'quiet': False,
         'no_warnings': False,
+        'nocheckcertificate': True,
+        # Trik jitu bypass 403: Menyamar sebagai Android App
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web']
+            }
+        }
     }
     
     print(f"🎵 Downloading audio from: {VIDEO_URL}")
