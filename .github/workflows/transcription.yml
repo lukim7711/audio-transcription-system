@@ -35,21 +35,49 @@ jobs:
           R2_SECRET_KEY: ${{ secrets.R2_SECRET_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
-          # 1. Siapkan Folder Kerja
           mkdir -p transcription_build
-          # Copy "Surat" (script python) ke dalam folder amplop
-          cp kaggle/transcription_notebook.py transcription_build/notebook.py
-          cd transcription_build
           
-          # 2. Buat "Label Alamat" (Metadata) menggunakan Python agar aman dari error syntax
+          # GUNAKAN PYTHON UNTUK INJEKSI VARIABEL & BUAT METADATA
+          # Ini lebih aman untuk menangani karakter spesial pada secret
           python3 -c '
-          import os, json
+          import os
+          import json
           
-          # Ambil variabel
-          job_id = os.environ.get("JOB_ID", "test-job")
+          # 1. Baca script asli
+          with open("kaggle/transcription_notebook.py", "r") as f:
+              original_code = f.read()
+              
+          # 2. Ambil variabel dari GitHub Env
+          env_vars = {
+              "JOB_ID": os.environ.get("JOB_ID"),
+              "VIDEO_URL": os.environ.get("VIDEO_URL"),
+              "MODEL_SIZE": os.environ.get("MODEL_SIZE"),
+              "LANGUAGE": os.environ.get("LANGUAGE"),
+              "WEBHOOK_URL": os.environ.get("WEBHOOK_URL"),
+              "WEBHOOK_SECRET": os.environ.get("WEBHOOK_SECRET"),
+              "R2_ENDPOINT": os.environ.get("R2_ENDPOINT"),
+              "R2_ACCESS_KEY": os.environ.get("R2_ACCESS_KEY"),
+              "R2_SECRET_KEY": os.environ.get("R2_SECRET_KEY"),
+              "R2_BUCKET": os.environ.get("R2_BUCKET"),
+          }
+          
+          # 3. Buat blok kode injeksi (hardcode env vars ke dalam script)
+          # Menggunakan repr() memastikan string dikutip dan di-escape dengan benar
+          injection_code = "import os\n"
+          for key, value in env_vars.items():
+              if value:
+                  injection_code += f"os.environ[\"{key}\"] = {repr(value)}\n"
+          
+          # Gabungkan: Injeksi di atas, kode asli di bawah
+          final_code = injection_code + "\n" + original_code
+          
+          # Tulis script final ke folder build
+          with open("transcription_build/notebook.py", "w") as f:
+              f.write(final_code)
+              
+          # 4. Generate Metadata Kernel
           username = os.environ.get("KAGGLE_USERNAME")
-          
-          # Buat slug pendek (wajib unik)
+          job_id = env_vars["JOB_ID"] or "test-job"
           short_id = job_id[:8]
           slug = f"audio-transcription-{short_id}"
           title = f"Transcription Job {short_id}"
@@ -70,11 +98,12 @@ jobs:
               "kernel_data_sources": []
           }
           
-          with open("kernel-metadata.json", "w") as f:
+          with open("transcription_build/kernel-metadata.json", "w") as f:
               json.dump(metadata, f, indent=2)
           '
           
-          # 3. Kirim Paket menggunakan Kurir Resmi (Kaggle CLI)
+          # 3. Push ke Kaggle
+          cd transcription_build
           kaggle kernels push
           
           echo "✅ Push command executed successfully!"
