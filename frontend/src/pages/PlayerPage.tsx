@@ -53,6 +53,7 @@ const PlayerPage: React.FC = () => {
   }, [id, navigate]);
   
   // Audio event handlers
+  // Audio event handlers & Sync Logic
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !transcript) return;
@@ -61,18 +62,27 @@ const PlayerPage: React.FC = () => {
       const time = audio.currentTime;
       setCurrentTime(time);
       
-      // Find active word
-      let wordIndex = 0;
+      // LOGIKA BARU: Sticky Highlight
+      // Cari kata terakhir yang "start"-nya sudah terlewati oleh waktu audio saat ini
+      let currentActiveIndex = -1;
+      let globalIndex = 0;
+
       for (const segment of transcript.segments) {
         for (const word of segment.words) {
-          if (time >= word.start && time <= word.end) {
-            setActiveWordIndex(wordIndex);
-            return;
+          if (word.start <= time) {
+            currentActiveIndex = globalIndex;
+          } else {
+            // Karena kata-kata urut waktu, jika kita ketemu kata yang belum mulai,
+            // berarti kata-kata setelahnya juga belum. Stop loop biar hemat resource.
+            break; 
           }
-          wordIndex++;
+          globalIndex++;
         }
+        // Break outer loop jika sudah melewati waktu
+        if (segment.end > time && currentActiveIndex === globalIndex - 1) break;
       }
-      setActiveWordIndex(null);
+
+      setActiveWordIndex(currentActiveIndex);
     };
     
     const handleLoadedMetadata = () => {
@@ -94,6 +104,20 @@ const PlayerPage: React.FC = () => {
       audio.removeEventListener('pause', handlePause);
     };
   }, [transcript]);
+
+  // TAMBAHAN: Efek untuk Auto-Scroll ke kata yang aktif
+  useEffect(() => {
+    if (activeWordIndex !== null) {
+      const activeElement = document.getElementById(`word-${activeWordIndex}`);
+      if (activeElement) {
+        activeElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center', // Taruh kata di tengah layar
+          inline: 'nearest'
+        });
+      }
+    }
+  }, [activeWordIndex]);
   
   // Playback controls
   const togglePlay = () => {
@@ -272,6 +296,7 @@ const PlayerPage: React.FC = () => {
                   return (
                     <span
                       key={idx}
+                      id={`word-${globalIndex}`}
                       onClick={() => handleWordClick(word.start)}
                       className={`cursor-pointer transition-colors ${
                         isActive
