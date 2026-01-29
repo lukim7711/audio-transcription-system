@@ -36,7 +36,8 @@ export function usePolling<T>(
   const [error, setError] = useState<Error | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   
-  const intervalRef = useRef<NodeJS.Timeout>();
+  //const intervalRef = useRef<NodeJS.Timeout>();
+  const intervalRef = useRef<ReturnType<typeof setInterval>>();
   const isMountedRef = useRef<boolean>(true);
 
   const poll = useCallback(async () => {

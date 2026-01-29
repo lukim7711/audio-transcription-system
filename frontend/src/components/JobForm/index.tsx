@@ -1,7 +1,8 @@
 import React, { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { submitJob } from '../../utils/api';
-import { validateYouTubeUrl, getValidationError } from '../../utils/validators';
+//import { validateYouTubeUrl, getValidationError } from '../../utils/validators';
+import { getValidationError } from '../../utils/validators';
 import { MODEL_SIZE_OPTIONS, LANGUAGE_OPTIONS, ModelSize, ISOLanguage } from '../../types';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';

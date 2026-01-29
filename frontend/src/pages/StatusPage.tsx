@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getJobStatus } from '../utils/api';
 import { formatTimestamp, formatProcessingTime, formatDuration } from '../utils/formatters';
-import { Job } from '../types';
+//import { Job } from '../types';
 import { usePolling } from '../hooks/usePolling';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorMessage } from '../components/common/ErrorMessage';
