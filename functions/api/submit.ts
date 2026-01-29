@@ -18,7 +18,8 @@ function generateUUID(): string {
 
 // Validate YouTube URL
 function validateYouTubeUrl(url: string): boolean {
-  const pattern = /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[a-zA-Z0-9_-]{11}/;
+  // ✅ FIX: Regex yang sama dengan frontend
+  const pattern = /^https?:\/\/(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}/;
   return pattern.test(url);
 }
 

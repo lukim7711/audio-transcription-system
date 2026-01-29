@@ -35,11 +35,11 @@ jobs:
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          JOB_ID: ${{ steps.params.outputs.job_id }}
-          VIDEO_URL: ${{ steps.params.outputs.video_url }}
-          MODEL_SIZE: ${{ steps.params.outputs.model_size }}
-          LANGUAGE: ${{ steps.params.outputs.language }}
-          WEBHOOK_URL: ${{ steps.params.outputs.webhook_url }}
+          JOB_ID: ${{ github.event.client_payload.job_id }}
+          VIDEO_URL: ${{ github.event.client_payload.video_url }}
+          MODEL_SIZE: ${{ github.event.client_payload.model_size }}
+          LANGUAGE: ${{ github.event.client_payload.language }}
+          WEBHOOK_URL: ${{ github.event.client_payload.webhook_url }}
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_ACCESS_KEY: ${{ secrets.R2_ACCESS_KEY }}
@@ -53,28 +53,22 @@ jobs:
           import base64
           import requests
           from pathlib import Path
-          
-          # Read Kaggle notebook
+
+          # 1. Read Notebook Content
           notebook_path = Path('kaggle/transcription_notebook.py')
           with open(notebook_path, 'r') as f:
               notebook_code = f.read()
+
+          # 2. Prepare Kernel Identity
+          # Kaggle butuh 'slug' untuk identifikasi unik URL kernel
+          job_short_id = os.environ['JOB_ID'][:8]
+          kernel_slug = f"audio-transcription-{job_short_id}"
+          kernel_title = f"Transcription Job {job_short_id}"
           
-          # Create Kaggle kernel metadata
-          kernel_metadata = {
-              "id": f"{os.environ['KAGGLE_USERNAME']}/audio-transcription-{os.environ['JOB_ID'][:8]}",
-              "title": f"Transcription Job {os.environ['JOB_ID'][:8]}",
-              "code_file": "notebook.py",
-              "language": "python",
-              "kernel_type": "script",
-              "is_private": True,
-              "enable_gpu": True,
-              "enable_internet": True,
-              "dataset_sources": [],
-              "kernel_sources": []
-          }
-          
-          # Prepare kernel push payload
+          # 3. Construct Payload (FIXED: Added slug & title)
           payload = {
+              "slug": kernel_slug,       # <--- INI YANG HILANG SEBELUMNYA
+              "title": kernel_title,     # <--- INI JUGA HILANG
               "text": notebook_code,
               "language": "python",
               "kernel_type": "script",
@@ -96,14 +90,14 @@ jobs:
                   "R2_BUCKET": os.environ["R2_BUCKET"]
               }
           }
-          
-          # Kaggle API credentials
+
+          # 4. Prepare Auth
           kaggle_username = os.environ["KAGGLE_USERNAME"]
           kaggle_key = os.environ["KAGGLE_KEY"]
           auth = base64.b64encode(f"{kaggle_username}:{kaggle_key}".encode()).decode()
-          
-          # Trigger kernel push
-          print(f"🚀 Triggering Kaggle kernel for job {os.environ['JOB_ID']}")
+
+          # 5. Send Request
+          print(f"🚀 Triggering Kaggle kernel: {kernel_slug}")
           
           response = requests.post(
               "https://www.kaggle.com/api/v1/kernels/push",
@@ -114,12 +108,11 @@ jobs:
               json=payload,
               timeout=60
           )
-          
+
           if response.status_code == 200:
               result = response.json()
               print(f"✅ Kaggle kernel triggered successfully")
               print(f"   Kernel URL: {result.get('url', 'N/A')}")
-              print(f"   Status: {result.get('status', 'N/A')}")
           else:
               print(f"❌ Failed to trigger Kaggle kernel")
               print(f"   Status: {response.status_code}")
