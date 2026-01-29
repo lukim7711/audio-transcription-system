@@ -34,6 +34,7 @@ jobs:
           R2_ACCESS_KEY: ${{ secrets.R2_ACCESS_KEY }}
           R2_SECRET_KEY: ${{ secrets.R2_SECRET_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
         run: |
           mkdir -p transcription_build
           
@@ -59,6 +60,7 @@ jobs:
               "R2_ACCESS_KEY": os.environ.get("R2_ACCESS_KEY"),
               "R2_SECRET_KEY": os.environ.get("R2_SECRET_KEY"),
               "R2_BUCKET": os.environ.get("R2_BUCKET"),
+              "R2_PUBLIC_URL": os.environ.get("R2_PUBLIC_URL"),
           }
           
           # 3. Buat blok kode injeksi (hardcode env vars ke dalam script)
