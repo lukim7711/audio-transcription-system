@@ -1,0 +1,182 @@
+name: Transcription Job Processor
+
+on:
+  repository_dispatch:
+    types: [transcription_job]
+
+jobs:
+  process-transcription:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          pip install requests
+      
+      - name: Extract job parameters
+        id: params
+        run: |
+          echo "job_id=${{ github.event.client_payload.job_id }}" >> $GITHUB_OUTPUT
+          echo "video_url=${{ github.event.client_payload.video_url }}" >> $GITHUB_OUTPUT
+          echo "model_size=${{ github.event.client_payload.model_size }}" >> $GITHUB_OUTPUT
+          echo "language=${{ github.event.client_payload.language }}" >> $GITHUB_OUTPUT
+          echo "webhook_url=${{ github.event.client_payload.webhook_url }}" >> $GITHUB_OUTPUT
+      
+      - name: Trigger Kaggle Notebook
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          JOB_ID: ${{ steps.params.outputs.job_id }}
+          VIDEO_URL: ${{ steps.params.outputs.video_url }}
+          MODEL_SIZE: ${{ steps.params.outputs.model_size }}
+          LANGUAGE: ${{ steps.params.outputs.language }}
+          WEBHOOK_URL: ${{ steps.params.outputs.webhook_url }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY: ${{ secrets.R2_ACCESS_KEY }}
+          R2_SECRET_KEY: ${{ secrets.R2_SECRET_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          python3 << 'EOF'
+          import os
+          import json
+          import time
+          import base64
+          import requests
+          from pathlib import Path
+          
+          # Read Kaggle notebook
+          notebook_path = Path('kaggle/transcription_notebook.py')
+          with open(notebook_path, 'r') as f:
+              notebook_code = f.read()
+          
+          # Create Kaggle kernel metadata
+          kernel_metadata = {
+              "id": f"{os.environ['KAGGLE_USERNAME']}/audio-transcription-{os.environ['JOB_ID'][:8]}",
+              "title": f"Transcription Job {os.environ['JOB_ID'][:8]}",
+              "code_file": "notebook.py",
+              "language": "python",
+              "kernel_type": "script",
+              "is_private": True,
+              "enable_gpu": True,
+              "enable_internet": True,
+              "dataset_sources": [],
+              "kernel_sources": []
+          }
+          
+          # Prepare kernel push payload
+          payload = {
+              "text": notebook_code,
+              "language": "python",
+              "kernel_type": "script",
+              "is_private": True,
+              "enable_gpu": True,
+              "enable_internet": True,
+              "dataset_sources": [],
+              "kernel_sources": [],
+              "environment_variables": {
+                  "JOB_ID": os.environ["JOB_ID"],
+                  "VIDEO_URL": os.environ["VIDEO_URL"],
+                  "MODEL_SIZE": os.environ["MODEL_SIZE"],
+                  "LANGUAGE": os.environ["LANGUAGE"],
+                  "WEBHOOK_URL": os.environ["WEBHOOK_URL"],
+                  "WEBHOOK_SECRET": os.environ["WEBHOOK_SECRET"],
+                  "R2_ENDPOINT": os.environ["R2_ENDPOINT"],
+                  "R2_ACCESS_KEY": os.environ["R2_ACCESS_KEY"],
+                  "R2_SECRET_KEY": os.environ["R2_SECRET_KEY"],
+                  "R2_BUCKET": os.environ["R2_BUCKET"]
+              }
+          }
+          
+          # Kaggle API credentials
+          kaggle_username = os.environ["KAGGLE_USERNAME"]
+          kaggle_key = os.environ["KAGGLE_KEY"]
+          auth = base64.b64encode(f"{kaggle_username}:{kaggle_key}".encode()).decode()
+          
+          # Trigger kernel push
+          print(f"🚀 Triggering Kaggle kernel for job {os.environ['JOB_ID']}")
+          
+          response = requests.post(
+              "https://www.kaggle.com/api/v1/kernels/push",
+              headers={
+                  "Authorization": f"Basic {auth}",
+                  "Content-Type": "application/json"
+              },
+              json=payload,
+              timeout=60
+          )
+          
+          if response.status_code == 200:
+              result = response.json()
+              print(f"✅ Kaggle kernel triggered successfully")
+              print(f"   Kernel URL: {result.get('url', 'N/A')}")
+              print(f"   Status: {result.get('status', 'N/A')}")
+          else:
+              print(f"❌ Failed to trigger Kaggle kernel")
+              print(f"   Status: {response.status_code}")
+              print(f"   Response: {response.text}")
+              exit(1)
+          EOF
+      
+      - name: Job Summary
+        run: |
+          echo "## Transcription Job Triggered 🎤" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Job ID:** \`${{ steps.params.outputs.job_id }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Model:** ${{ steps.params.outputs.model_size }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Language:** ${{ steps.params.outputs.language }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Kaggle notebook is now processing the video. Results will be sent to webhook when complete." >> $GITHUB_STEP_SUMMARY
+      
+      - name: Notify on failure
+        if: failure()
+        env:
+          JOB_ID: ${{ steps.params.outputs.job_id }}
+          WEBHOOK_URL: ${{ steps.params.outputs.webhook_url }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          python3 << 'EOF'
+          import os
+          import json
+          import hmac
+          import hashlib
+          import requests
+          
+          payload = {
+              "job_id": os.environ["JOB_ID"],
+              "status": "failed",
+              "error_code": "PROCESSING_TIMEOUT",
+              "error_message": "GitHub Actions workflow failed",
+              "processing_time": 0
+          }
+          
+          payload_json = json.dumps(payload)
+          signature = hmac.new(
+              os.environ["WEBHOOK_SECRET"].encode(),
+              payload_json.encode(),
+              hashlib.sha256
+          ).hexdigest()
+          
+          try:
+              requests.post(
+                  os.environ["WEBHOOK_URL"],
+                  data=payload_json,
+                  headers={
+                      'Content-Type': 'application/json',
+                      'X-Webhook-Signature': signature
+                  },
+                  timeout=30
+              )
+              print("✅ Failure webhook sent")
+          except Exception as e:
+              print(f"❌ Failed to send webhook: {e}")
+          EOF

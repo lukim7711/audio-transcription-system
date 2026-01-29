@@ -1,0 +1,22 @@
+{
+  "name": "audio-transcription-system",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "npx wrangler pages dev frontend/dist --local --port 8788 --binding DB=transcriptions-db",
+    "build": "cd frontend && npm run build",
+    "deploy": "cd frontend && npm run build && npx wrangler pages deploy dist",
+    "db:create": "npx wrangler d1 create transcriptions-db",
+    "db:migrate": "npx wrangler d1 execute transcriptions-db --file=database/schema.sql",
+    "db:migrate:local": "npx wrangler d1 execute transcriptions-db --local --file=database/schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4.61.0"
+  },
+  "description": "**Serverless YouTube video transcription with word-level audio synchronization**",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

@@ -1,0 +1,22 @@
+name = "audio-transcription-system"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "frontend/dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "transcriptions-db"
+database_id = "0050cab1-e629-4428-abe3-cb9784040e5e"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "transcriptions"
+
+[env.production]
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "transcriptions-db"
+database_id = "0050cab1-e629-4428-abe3-cb9784040e5e"
+
+[[env.production.r2_buckets]]
+binding = "R2"
+bucket_name = "transcriptions"
