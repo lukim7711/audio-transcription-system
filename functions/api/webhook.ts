@@ -5,27 +5,36 @@ interface Env {
   WEBHOOK_SECRET: string;
 }
 
-// Simple HMAC-SHA256 implementation for Cloudflare Workers
+// ✅ FIX: Web Crypto API untuk Cloudflare Workers
 async function verifyHmacSignature(
   secret: string,
   data: string,
   signature: string
 ): Promise<boolean> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
+  try {
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(secret);
+    
+    const key = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign', 'verify']
+    );
 
-  const signatureBuffer = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
-  const computedSignature = Array.from(new Uint8Array(signatureBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+    const dataBuffer = encoder.encode(data);
+    const signatureBuffer = await crypto.subtle.sign('HMAC', key, dataBuffer);
+    
+    const computedSignature = Array.from(new Uint8Array(signatureBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
 
-  return computedSignature === signature;
+    return computedSignature === signature;
+  } catch (error) {
+    console.error('HMAC verification error:', error);
+    return false;
+  }
 }
 
 export async function onRequestPost(context: EventContext<Env, any, any>) {
@@ -47,17 +56,18 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
       );
     }
 
-    // Get raw body for signature verification
-    const body = await context.request.text();
+    // Clone request to read body multiple times
+    const bodyText = await context.request.text();
 
     // Verify HMAC signature
     const isValid = await verifyHmacSignature(
       context.env.WEBHOOK_SECRET,
-      body,
+      bodyText,
       signature
     );
 
     if (!isValid) {
+      console.error('Invalid webhook signature received');
       return Response.json(
         {
           success: false,
@@ -72,7 +82,7 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
     }
 
     // Parse payload
-    const payload = JSON.parse(body);
+    const payload = JSON.parse(bodyText);
     const { job_id, status } = payload;
 
     if (!job_id || !status) {

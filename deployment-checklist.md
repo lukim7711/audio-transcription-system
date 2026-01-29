@@ -341,7 +341,7 @@ Add each variable:
 | `GITHUB_TOKEN` | `ghp_xxxxxxxxxxxx` (from Phase 3, Step 1) |
 | `GITHUB_REPO` | `yourusername/audio-transcription-system` |
 | `WEBHOOK_SECRET` | (from Phase 3, Step 2 - same as GitHub) |
-| `WEBHOOK_URL` | `https://your-site.pages.dev` (same as ALLOWED_ORIGIN) |
+| `WEBHOOK_URL` | `https://your-site.pages.dev/api/webhook`|
 
 **Important:**
 - Use your **actual production URL** from Phase 4, Step 2

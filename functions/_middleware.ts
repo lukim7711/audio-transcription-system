@@ -1,5 +1,5 @@
-// Cloudflare Pages Functions Middleware
-// Handles CORS for all API endpoints
+// ✅ FIXED: Cloudflare Pages Functions Middleware
+// Location: functions/_middleware.ts (ROOT, bukan frontend/functions!)
 
 interface Env {
   ALLOWED_ORIGIN?: string;
@@ -8,6 +8,7 @@ interface Env {
 export async function onRequest(context: EventContext<Env, any, any>) {
   const { request, env } = context;
   
+  // Get allowed origin from environment or use default for local dev
   const allowedOrigin = env.ALLOWED_ORIGIN || 'http://localhost:5173';
   
   // Handle preflight requests
@@ -16,10 +17,10 @@ export async function onRequest(context: EventContext<Env, any, any>) {
       status: 204,
       headers: {
         'Access-Control-Allow-Origin': allowedOrigin,
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Webhook-Signature',
         'Access-Control-Allow-Credentials': 'true',
-        'Access-Control-Max-Age': '86400', // 24 hours
+        'Access-Control-Max-Age': '86400',
       },
     });
   }
