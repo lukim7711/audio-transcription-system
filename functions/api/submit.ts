@@ -74,6 +74,35 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
       );
     }
 
+    // Check for existing job (Smart Caching)
+    try {
+      const existingJob: any = await context.env.DB.prepare(
+        `SELECT * FROM jobs WHERE video_url = ? AND model_size = ? AND status != 'failed' ORDER BY created_at DESC LIMIT 1`
+      )
+        .bind(video_url, model_size)
+        .first();
+
+      if (existingJob) {
+        console.log(`Cache hit for video: ${video_url}`);
+        return Response.json(
+          {
+            success: true,
+            data: {
+              job_id: existingJob.id,
+              status: existingJob.status,
+              created_at: existingJob.created_at,
+            },
+            message: 'Job recovered from cache',
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+          { status: 200 }
+        );
+      }
+    } catch (e) {
+      console.error('Cache check failed:', e);
+      // Ignore cache error and proceed to create new job
+    }
+
     // Generate job ID
     const job_id = generateUUID();
     const created_at = Math.floor(Date.now() / 1000);
