@@ -27,7 +27,40 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
   try {
     // Parse request body
     const body = await context.request.json();
-    const { video_url, model_size = 'medium', language = 'auto' } = body;
+    let { video_url, model_size = 'medium', language = 'auto' } = body;
+
+    // Helper to normalize YouTube URL to canonical format
+    // Converts youtu.be/ID -> youtube.com/watch?v=ID
+    // Removes query parameters like &feature=share
+    const normalizeYouTubeUrl = (url: string): string => {
+      try {
+        const urlObj = new URL(url);
+        let videoId = '';
+
+        if (urlObj.hostname.includes('youtu.be')) {
+          videoId = urlObj.pathname.slice(1);
+        } else if (urlObj.hostname.includes('youtube.com')) {
+          const params = new URLSearchParams(urlObj.search);
+          if (urlObj.pathname.includes('/shorts/')) {
+            videoId = urlObj.pathname.split('/shorts/')[1];
+          } else {
+            videoId = params.get('v') || '';
+          }
+        }
+
+        if (videoId) {
+          return `https://www.youtube.com/watch?v=${videoId}`;
+        }
+        return url; // Fallback if extraction fails
+      } catch (e) {
+        return url;
+      }
+    };
+
+    // Normalize URL before processing
+    if (video_url && typeof video_url === 'string') {
+      video_url = normalizeYouTubeUrl(video_url);
+    }
 
     // Validate video_url
     if (!video_url || typeof video_url !== 'string') {
