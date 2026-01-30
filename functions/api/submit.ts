@@ -29,158 +29,86 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
     const body = await context.request.json();
     let { video_url, model_size = 'medium', language = 'auto' } = body;
 
-    // Store raw URL for cache checking against legacy non-normalized data
-    const raw_video_url = video_url;
+    // --------------------------------------------------------------------------
+    // LOGIC STEP 1: Input Analysis & Normalization
+    // --------------------------------------------------------------------------
 
-    // Helper to normalize YouTube URL to canonical format
-    // Converts youtu.be/ID -> youtube.com/watch?v=ID
-    // Removes query parameters like &feature=share
-    const normalizeYouTubeUrl = (url: string): string => {
-      try {
-        const urlObj = new URL(url);
-        let videoId = '';
-
-        if (urlObj.hostname.includes('youtu.be')) {
-          videoId = urlObj.pathname.slice(1);
-        } else if (urlObj.hostname.includes('youtube.com')) {
-          const params = new URLSearchParams(urlObj.search);
-          if (urlObj.pathname.includes('/shorts/')) {
-            videoId = urlObj.pathname.split('/shorts/')[1];
-          } else {
-            videoId = params.get('v') || '';
-          }
-        }
-
-        if (videoId) {
-          return `https://www.youtube.com/watch?v=${videoId}`;
-        }
-        return url; // Fallback if extraction fails
-      } catch (e) {
-        return url;
-      }
+    // Extract 11-char Video ID (The "DNA")
+    // This supports: youtu.be, youtube.com/watch, shorts, embed, etc.
+    const extractVideoId = (url: string): string | null => {
+      const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+      return match ? match[1] : null;
     };
 
-    // Normalize URL before processing
-    if (video_url && typeof video_url === 'string') {
-      video_url = normalizeYouTubeUrl(video_url);
+    const videoId = extractVideoId(video_url);
+    let normalizedUrl = video_url; // Default to raw if ID extraction fails
+
+    if (videoId) {
+      // Force Canonical Format for consistent storage
+      normalizedUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      console.log(`[Submit] Video ID: ${videoId} -> Normalized: ${normalizedUrl}`);
+    } else {
+      console.warn(`[Submit] Could not extract Video ID from: ${video_url}`);
     }
 
-    // Validate video_url
-    if (!video_url || typeof video_url !== 'string') {
-      return Response.json(
-        {
-          success: false,
-          error: {
-            code: 'INVALID_URL',
-            message: 'video_url is required',
-          },
-          timestamp: Math.floor(Date.now() / 1000),
-        },
-        { status: 400 }
-      );
-    }
+    // --------------------------------------------------------------------------
+    // LOGIC STEP 2: Database Lookup (The "Check")
+    // --------------------------------------------------------------------------
 
-    if (!validateYouTubeUrl(video_url)) {
-      return Response.json(
-        {
-          success: false,
-          error: {
-            code: 'INVALID_URL',
-            message: 'Must be a valid YouTube URL (youtube.com/watch?v=... or youtu.be/...)',
-          },
-          timestamp: Math.floor(Date.now() / 1000),
-        },
-        { status: 400 }
-      );
-    }
+    if (videoId) {
+      console.log(`[Cache Check] Checking for existing jobs with ID: ${videoId}`);
 
-    // Validate model_size
-    const validSizes = ['tiny', 'base', 'small', 'medium', 'large-v3'];
-    if (!validSizes.includes(model_size)) {
-      return Response.json(
-        {
-          success: false,
-          error: {
-            code: 'INVALID_URL',
-            message: `Invalid model_size. Must be one of: ${validSizes.join(', ')}`,
-          },
-          timestamp: Math.floor(Date.now() / 1000),
-        },
-        { status: 400 }
-      );
-    }
+      try {
+        // Aggressive Search: Find ANY job containing this ID
+        // This works regardless of how the URL is stored (shorts, raw, etc.)
+        const searchPattern = `%${videoId}%`;
 
-    // Check for existing job (Smart Caching)
-    try {
-      // Strategy: Check exact match AND canonical match AND short link match AND RAW INPUT
-      // This handles legacy data that might be stored in different formats
-      const candidates = [
-        video_url, // Canonical
-        raw_video_url, // Legacy/Raw input
-      ];
+        const existingJob: any = await context.env.DB.prepare(
+          `SELECT * FROM jobs WHERE video_url LIKE ? AND model_size = ? AND status != 'failed' ORDER BY created_at DESC LIMIT 1`
+        )
+          .bind(searchPattern, model_size)
+          .first();
 
-      // Extract ID again just to be sure we have variants
-      const urlObj = new URL(video_url);
-      const videoId = urlObj.searchParams.get('v');
-
-      if (videoId) {
-        candidates.push(`https://www.youtube.com/watch?v=${videoId}`);
-        candidates.push(`https://youtube.com/watch?v=${videoId}`);
-        candidates.push(`https://youtu.be/${videoId}`);
-      }
-
-      // Create placeholders for SQL IN (? , ? , ?)
-      const placeholders = candidates.map(() => '?').join(',');
-
-      console.log(`[Cache Check] Looking for candidates:`, candidates);
-
-      const query = `
-        SELECT * FROM jobs 
-        WHERE video_url IN (${placeholders}) 
-        AND model_size = ? 
-        AND status != 'failed' 
-        ORDER BY created_at DESC 
-        LIMIT 1
-      `;
-
-      // Bind params: candidates array + model_size
-      const existingJob: any = await context.env.DB.prepare(query)
-        .bind(...candidates, model_size)
-        .first();
-
-      if (existingJob) {
-        console.log(`[Cache HIT] Found job ${existingJob.id} for ${video_url}`);
-        return Response.json(
-          {
-            success: true,
-            data: {
-              job_id: existingJob.id,
-              status: existingJob.status,
-              created_at: existingJob.created_at,
+        // Scenario A: Job FOUND
+        if (existingJob) {
+          console.log(`[Cache HIT] Found existing job ${existingJob.id} (Status: ${existingJob.status})`);
+          return Response.json(
+            {
+              success: true,
+              data: {
+                job_id: existingJob.id,
+                status: existingJob.status,
+                created_at: existingJob.created_at,
+              },
+              message: 'Job recovered from cache (Duplicate Detected)',
+              timestamp: Math.floor(Date.now() / 1000),
             },
-            message: 'Job recovered from cache',
-            timestamp: Math.floor(Date.now() / 1000),
-          },
-          { status: 200 }
-        );
-      } else {
-        console.log(`[Cache MISS] No matching job found for ${video_url}`);
+            { status: 200 }
+          );
+        }
+
+        console.log(`[Cache MISS] No active job found for ID ${videoId}. Proceeding to create new job.`);
+
+      } catch (e) {
+        console.error('[Cache Check ERROR]', e);
+        // On error, we proceed (fail-open) but log it
       }
-    } catch (e) {
-      console.error('[Cache Check ERROR]:', e);
-      // Ignore cache error and proceed to create new job
     }
+
+    // --------------------------------------------------------------------------
+    // LOGIC STEP 3: Create New Job (Insert)
+    // --------------------------------------------------------------------------
 
     // Generate job ID
     const job_id = generateUUID();
     const created_at = Math.floor(Date.now() / 1000);
 
-    // Insert into database
+    // Insert into database using NORMALIZED URL (Sanitized)
     try {
       await context.env.DB.prepare(
         'INSERT INTO jobs (id, video_url, model_size, language, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
       )
-        .bind(job_id, video_url, model_size, language, 'pending', created_at, created_at)
+        .bind(job_id, normalizedUrl, model_size, language, 'pending', created_at, created_at)
         .run();
     } catch (dbError) {
       console.error('Database error:', dbError);
