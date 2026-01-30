@@ -47,4 +47,4 @@ Thumbs.db
 # Cloudflare
 .dev.vars
 wrangler.toml.backup
-wrangler.toml
+# wrangler.toml (Un-ignored for deployment)
