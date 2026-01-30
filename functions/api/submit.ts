@@ -29,6 +29,9 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
     const body = await context.request.json();
     let { video_url, model_size = 'medium', language = 'auto' } = body;
 
+    // Store raw URL for cache checking against legacy non-normalized data
+    const raw_video_url = video_url;
+
     // Helper to normalize YouTube URL to canonical format
     // Converts youtu.be/ID -> youtube.com/watch?v=ID
     // Removes query parameters like &feature=share
@@ -109,10 +112,11 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
 
     // Check for existing job (Smart Caching)
     try {
-      // Strategy: Check exact match AND canonical match AND short link match
+      // Strategy: Check exact match AND canonical match AND short link match AND RAW INPUT
       // This handles legacy data that might be stored in different formats
       const candidates = [
-        video_url, // Current normalized input
+        video_url, // Canonical
+        raw_video_url, // Legacy/Raw input
       ];
 
       // Extract ID again just to be sure we have variants
