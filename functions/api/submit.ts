@@ -102,7 +102,7 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
 
     // Trigger GitHub Actions workflow
     const webhookUrl = `${context.env.WEBHOOK_URL}/api/webhook`;
-    
+
     try {
       const githubResponse = await fetch(
         `https://api.github.com/repos/${context.env.GITHUB_REPO}/dispatches`,
@@ -128,8 +128,13 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
       );
 
       if (!githubResponse.ok) {
-        console.error('GitHub API error:', await githubResponse.text());
-        // Don't fail the request, job is already in database
+        const errorText = await githubResponse.text();
+        console.error('GitHub API error:', errorText);
+
+        // In development, we want to know if GitHub trigger failed
+        if (context.env.GITHUB_TOKEN === 'ghp_your_token' || context.env.GITHUB_TOKEN.includes('(hidden)')) {
+          throw new Error(`GitHub Configuration Error: ${errorText}. Please check .dev.vars`);
+        }
       }
     } catch (githubError) {
       console.error('Failed to trigger GitHub Actions:', githubError);

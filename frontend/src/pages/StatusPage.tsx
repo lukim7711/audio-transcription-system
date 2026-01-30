@@ -13,9 +13,12 @@ const StatusPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
+  // Create stable fetch function to prevent infinite polling loop
+  const fetchJobStatus = React.useCallback(() => getJobStatus(id!), [id]);
+
   // Poll job status every 3 seconds until completed or failed
   const { data: response, error, isLoading } = usePolling(
-    () => getJobStatus(id!),
+    fetchJobStatus,
     {
       interval: 3000,
       shouldStop: (res) => {
@@ -171,7 +174,7 @@ const StatusPage: React.FC = () => {
                 Redirecting to player in 2 seconds...
               </p>
             </div>
-            
+
             <Button
               onClick={() => navigate(`/player/${job.id}`)}
               fullWidth
@@ -186,7 +189,7 @@ const StatusPage: React.FC = () => {
             <ErrorMessage
               message={job.error_message || 'Transcription failed'}
             />
-            
+
             {job.error_code && (
               <div className="text-sm text-gray-600">
                 <p className="font-medium">Error Code: {job.error_code}</p>
