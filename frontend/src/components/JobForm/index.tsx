@@ -62,16 +62,16 @@ const JobForm: React.FC = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="bg-white rounded-xl shadow-lg p-8">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">New Transcription</h2>
-          <p className="text-gray-600 mt-2">
+    <div className="max-w-2xl mx-auto px-4">
+      <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 md:p-8">
+        <div className="mb-4 sm:mb-6">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">New Transcription</h2>
+          <p className="text-sm sm:text-base text-gray-600 mt-2">
             Enter a YouTube video URL to generate an accurate transcription with word-level timestamps
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
           <Input
             label="YouTube URL"
             value={videoUrl}
@@ -90,7 +90,7 @@ const JobForm: React.FC = () => {
             disabled={isSubmitting}
           />
 
-          <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
+          <div className="bg-gray-50 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-600">
             <p className="font-medium mb-2">Model recommendations:</p>
             <ul className="space-y-1 list-disc list-inside">
               <li><strong>Medium:</strong> Best balance of speed and accuracy (recommended)</li>
@@ -118,9 +118,9 @@ const JobForm: React.FC = () => {
           </Button>
         </form>
 
-        <div className="mt-6 pt-6 border-t border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-900 mb-2">How it works:</h3>
-          <ol className="text-sm text-gray-600 space-y-2 list-decimal list-inside">
+        <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-gray-200">
+          <h3 className="text-xs sm:text-sm font-semibold text-gray-900 mb-2">How it works:</h3>
+          <ol className="text-xs sm:text-sm text-gray-600 space-y-1.5 sm:space-y-2 list-decimal list-inside">
             <li>Submit your YouTube video URL</li>
             <li>Our system downloads and processes the audio using AI</li>
             <li>Get accurate transcription with word-level timestamps</li>
