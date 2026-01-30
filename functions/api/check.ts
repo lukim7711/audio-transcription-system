@@ -33,13 +33,17 @@ export async function onRequestGet(context: EventContext<Env, unknown, unknown>)
 
     if (videoId) {
         const searchPattern = '%' + videoId + '%';
-        query = `SELECT id, video_url, status FROM jobs WHERE video_url LIKE '${searchPattern}' AND model_size = '${model_size}'`; // Debug string
+        // Debug string to show what V6 logic does
+        query = `SELECT id, video_url, status FROM jobs WHERE (instr(video_url, '${videoId}') > 0 OR video_url LIKE '${searchPattern}' OR video_url = '${video_url}') AND model_size = '${model_size}'`;
 
         try {
             const stmt = context.env.DB.prepare(
-                `SELECT * FROM jobs WHERE video_url LIKE ? AND model_size = ? ORDER BY created_at DESC LIMIT 5`
+                `SELECT * FROM jobs 
+             WHERE (instr(video_url, ?) > 0 OR video_url LIKE ? OR video_url = ?) 
+             AND model_size = ? 
+             ORDER BY created_at DESC LIMIT 5`
             );
-            const results = await stmt.bind(searchPattern, model_size).all();
+            const results = await stmt.bind(videoId, searchPattern, video_url, model_size).all();
             dbResult = results.results;
         } catch (e: any) {
             dbResult = 'Error: ' + e.message;

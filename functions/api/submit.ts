@@ -89,14 +89,21 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
       console.log(`[Cache Check] Checking for existing jobs with ID: ${videoId}`);
 
       try {
-        // Aggressive Search: Find ANY job containing this ID
-        // This works regardless of how the URL is stored (shorts, raw, etc.)
+        // V6 Strategy: Hybrid Search (INSTR + LIKE + Exact)
+        // 1. INSTR: Fast substring match
+        // 2. LIKE: Pattern match (fallback)
+        // 3. Exact: Raw URL match
         const searchPattern = `%${videoId}%`;
 
+        // Check for ANY job that matches the ID or the exact URL
         const existingJob: any = await context.env.DB.prepare(
-          `SELECT * FROM jobs WHERE video_url LIKE ? AND model_size = ? AND status != 'failed' ORDER BY created_at DESC LIMIT 1`
+          `SELECT * FROM jobs 
+           WHERE (instr(video_url, ?) > 0 OR video_url LIKE ? OR video_url = ?) 
+           AND model_size = ? 
+           AND status != 'failed' 
+           ORDER BY created_at DESC LIMIT 1`
         )
-          .bind(searchPattern, model_size)
+          .bind(videoId, searchPattern, video_url, model_size)
           .first();
 
         // Scenario A: Job FOUND
@@ -119,9 +126,21 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
 
         console.log(`[Cache MISS] No active job found for ID ${videoId}. Proceeding to create new job.`);
 
-      } catch (e) {
+      } catch (e: any) {
         console.error('[Cache Check ERROR]', e);
-        // On error, we proceed (fail-open) but log it
+        // CRITICAL FIX: Fail Closed!
+        // If we can't check the cache (DB Error), we MUST NOT create a new job to prevent duplicates.
+        return Response.json(
+          {
+            success: false,
+            error: {
+              code: 'DATABASE_ERROR',
+              message: 'Cache check failed. Cannot proceed safely. ' + (e.message || ''),
+            },
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+          { status: 500 }
+        );
       }
     }
 
