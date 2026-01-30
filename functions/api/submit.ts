@@ -109,14 +109,43 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
 
     // Check for existing job (Smart Caching)
     try {
-      const existingJob: any = await context.env.DB.prepare(
-        `SELECT * FROM jobs WHERE video_url = ? AND model_size = ? AND status != 'failed' ORDER BY created_at DESC LIMIT 1`
-      )
-        .bind(video_url, model_size)
+      // Strategy: Check exact match AND canonical match AND short link match
+      // This handles legacy data that might be stored in different formats
+      const candidates = [
+        video_url, // Current normalized input
+      ];
+
+      // Extract ID again just to be sure we have variants
+      const urlObj = new URL(video_url);
+      const videoId = urlObj.searchParams.get('v');
+
+      if (videoId) {
+        candidates.push(`https://www.youtube.com/watch?v=${videoId}`);
+        candidates.push(`https://youtube.com/watch?v=${videoId}`);
+        candidates.push(`https://youtu.be/${videoId}`);
+      }
+
+      // Create placeholders for SQL IN (? , ? , ?)
+      const placeholders = candidates.map(() => '?').join(',');
+
+      console.log(`[Cache Check] Looking for candidates:`, candidates);
+
+      const query = `
+        SELECT * FROM jobs 
+        WHERE video_url IN (${placeholders}) 
+        AND model_size = ? 
+        AND status != 'failed' 
+        ORDER BY created_at DESC 
+        LIMIT 1
+      `;
+
+      // Bind params: candidates array + model_size
+      const existingJob: any = await context.env.DB.prepare(query)
+        .bind(...candidates, model_size)
         .first();
 
       if (existingJob) {
-        console.log(`Cache hit for video: ${video_url}`);
+        console.log(`[Cache HIT] Found job ${existingJob.id} for ${video_url}`);
         return Response.json(
           {
             success: true,
@@ -130,9 +159,11 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
           },
           { status: 200 }
         );
+      } else {
+        console.log(`[Cache MISS] No matching job found for ${video_url}`);
       }
     } catch (e) {
-      console.error('Cache check failed:', e);
+      console.error('[Cache Check ERROR]:', e);
       // Ignore cache error and proceed to create new job
     }
 
