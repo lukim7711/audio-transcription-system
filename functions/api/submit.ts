@@ -33,22 +33,52 @@ export async function onRequestPost(context: EventContext<Env, any, any>) {
     // LOGIC STEP 1: Input Analysis & Normalization
     // --------------------------------------------------------------------------
 
-    // Extract 11-char Video ID (The "DNA")
-    // This supports: youtu.be, youtube.com/watch, shorts, embed, etc.
+    // Extract 11-char Video ID using Native URL Parsing (No Complex Regex)
     const extractVideoId = (url: string): string | null => {
-      const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
-      return match ? match[1] : null;
+      try {
+        const urlObj = new URL(url);
+        const hostname = urlObj.hostname.replace('www.', '');
+
+        // Case 1: youtu.be/ID
+        if (hostname === 'youtu.be') {
+          return urlObj.pathname.slice(1).split(/[?#]/)[0]; // Remove query/hash
+        }
+
+        // Case 2: youtube.com/shorts/ID
+        if (urlObj.pathname.startsWith('/shorts/')) {
+          const parts = urlObj.pathname.split('/');
+          // parts[0]='', parts[1]='shorts', parts[2]='ID'
+          return parts[2] || null;
+        }
+
+        // Case 3: youtube.com/watch?v=ID
+        if (urlObj.pathname === '/watch') {
+          return urlObj.searchParams.get('v');
+        }
+
+        // Case 4: youtube.com/embed/ID (Rare)
+        if (urlObj.pathname.startsWith('/embed/')) {
+          return urlObj.pathname.split('/')[2] || null;
+        }
+
+        return null;
+      } catch (e) {
+        console.error('[ExtractID Error] Invalid URL:', url);
+        return null;
+      }
     };
 
     const videoId = extractVideoId(video_url);
-    let normalizedUrl = video_url; // Default to raw if ID extraction fails
+    let normalizedUrl = video_url;
 
     if (videoId) {
-      // Force Canonical Format for consistent storage
+      // Force Canonical Format
       normalizedUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      console.log(`[Submit] Video ID: ${videoId} -> Normalized: ${normalizedUrl}`);
+      console.log(`[Submit] Input: ${video_url}`);
+      console.log(`[Submit] Extracted ID: ${videoId}`); // <-- CRITICAL LOG
+      console.log(`[Submit] Normalized: ${normalizedUrl}`);
     } else {
-      console.warn(`[Submit] Could not extract Video ID from: ${video_url}`);
+      console.warn(`[Submit] FAILED to extract ID from: ${video_url}`);
     }
 
     // --------------------------------------------------------------------------
