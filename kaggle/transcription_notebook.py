@@ -63,6 +63,11 @@ print(f"  Video URL: {VIDEO_URL}")
 def send_webhook(payload):
     """Send webhook with HMAC signature"""
     try:
+        # Konfigurasi Localhost Check
+        if not WEBHOOK_URL or 'localhost' in WEBHOOK_URL or '127.0.0.1' in WEBHOOK_URL:
+            print("⚠️  Skipping webhook for localhost URL (Local Development Mode)")
+            return
+
         # Pastikan WEBHOOK_SECRET ada
         if not WEBHOOK_SECRET:
             print("❌ Webhook secret is missing, skipping webhook")
